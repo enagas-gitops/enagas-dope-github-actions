@@ -1,0 +1,19 @@
+name: "Backup Repositorio a S3"
+
+on:  
+  schedule:
+    - cron:  '00 05 * * 5'
+
+permissions:
+      id-token: write
+      contents: read
+
+jobs:  
+  backup:
+    uses: enagas-devops/enagas-actions/.github/workflows/backup_github_to_s3.yaml@main 
+    with:
+      bucket-prefix: ${{ github.repository }}
+    secrets:
+      AWS_ROLE_TO_ASSUME_SHARED_BACKUP: ${{secrets.AWS_ROLE_TO_ASSUME_SHARED_BACKUP}}
+      DT_URL: ${{ secrets.DT_URL }}
+      DT_TOKEN_EVENTS: ${{ secrets.DT_TOKEN_EVENTS }}
