@@ -1,0 +1,56 @@
+---
+name: WFC - Helm Config
+
+# Controls when the workflow will run
+on:
+  workflow_call:
+    inputs:
+      runner:
+        required: true
+        type: string
+      environment:
+        required: true
+        type: string
+      version:
+        required: true
+        type: string
+
+concurrency:
+  group: deploy-helm-config
+  cancel-in-progress: false
+
+jobs:
+  helm-config:
+    name: Helm Config
+    environment:
+      name: ${{ inputs.environment }}
+      # url: https://argocd.apps.snopenshift.sdevops.es/applications/argocd/${{ github.event.repository.name }}
+    runs-on: ${{ inputs.runner }}
+    container:
+      image: docksdtr.indra.es/piarq-21.devo/gh-runner-python:3.11.6-v4
+    steps:
+      - name: Get token
+        uses: actions/create-github-app-token@v1
+        id: app-token
+        with:
+          app-id: 904133
+          private-key: ${{ secrets.GH_PRIVATE_KEY }}
+          owner: Minsait-GA
+          repositories: |
+            ${{ vars.CONFIG_REPO }}
+      - name: Checkout config repo
+        uses: actions/checkout@v4
+        with:
+          repository: Minsait-GA/${{ vars.CONFIG_REPO }}
+          token: ${{ steps.app-token.outputs.token }}
+          ref: ${{ vars.CONFIG_BRANCH }}
+      - name: Change image tag
+        uses: Minsait-GA/sdops-dope-github-actions-libraries/utils/helm-config@feature/utils
+        with:
+          values-file: helm/values-${{ inputs.environment }}.yaml
+          key: image.tag
+          value: ${{ inputs.version }}
+          push-changes: true
+          git-user: sdops-app
+          git-app-id: 904133
+          git-token: ${{ steps.app-token.outputs.token }}

@@ -1,0 +1,32 @@
+name: NPM - Quality Assurance
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        required: true
+        type: string
+
+concurrency:
+  group: pr-develop-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  hadolint:
+    uses: ./.github/workflows/wfc-hadolint.yaml
+    with:
+      runner: ${{ inputs.runner }}
+      containerfile-path: "Dockerfile"
+      comment-recreate: true
+  build:
+    uses: ./.github/workflows/npm-build.yaml
+    with:
+      runner: ${{ inputs.runner }}
+      version-suffix: "-pr-${{ github.event.pull_request.number }}"
+      env: dev
+      base-url: ${{ vars.BASE_URL_DEV }}
+      rest-api-url: ${{ vars.REST_API_URL_DEV }}
+      containerfile-path: "Dockerfile"
+      push: false
+      analyze: false
+    secrets: inherit

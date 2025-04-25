@@ -1,0 +1,163 @@
+---
+name: NPM - Build
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        required: true
+        type: string
+      version-suffix:
+        required: false
+        type: string
+        default: ""
+      containerfile-path:
+        required: false
+        type: string
+        default: "Dockerfile"
+      ref:
+        required: false
+        type: string
+      push:
+        description: 'Whether to push the built image to a registry'
+        required: false
+        type: boolean
+        default: true
+      analyze:
+        description: 'Whether to analyze the built image with Trivy'
+        required: false
+        type: boolean
+        default: true
+      env:
+        required: true
+        type: string
+      base-url:
+        required: true
+        type: string
+      rest-api-url:
+        required: true
+        type: string
+      jobs-path:
+        required: false
+        type: string
+        default: "/var/jobs"
+    outputs:
+      version:
+        value: ${{ jobs.install.outputs.version }}
+      image:
+        value: "${{ vars.DOCKER_REGISTRY }}/${{ github.event.repository.name }}"
+      tag:
+        value: ${{ jobs.install.outputs.tag }}
+
+jobs:
+  checkout:
+    runs-on: ${{ inputs.runner }}
+    container:
+      image: docksdtr.indra.es/piarq-21.devo/gh-runner-python:3.11.6-v3
+    steps:
+      - name: Checkout
+        id: checkout
+        uses: Minsait-GA/sdops-dope-github-actions-libraries/utils/checkout@feature/utils
+        with:
+          ref: ${{ inputs.ref }}
+    outputs:
+      working-directory: ${{ steps.checkout.outputs.working-directory }}
+  install:
+    runs-on: ${{ inputs.runner }}
+    needs: checkout
+    container:
+      image: docker.io/library/node:14.15
+    steps:
+      - name: Get app version
+        id: version
+        working-directory: ${{ needs.checkout.outputs.working-directory }}
+        run: |
+          version=$(cat package.json \
+            | grep version \
+            | head -1 \
+            | awk -F: '{ print $2 }' \
+            | sed 's/[",]//g')
+          version=$(echo $version | xargs) # remove leading and trailing whitespaces
+          tag="${version}${{ inputs.version-suffix }}"
+          echo "Current version is $version"
+          echo "version=$version" >> $GITHUB_OUTPUT
+          echo "tag=$tag" >> $GITHUB_OUTPUT
+      - name: Copy repository
+        run: |
+          cp -r ${{ needs.checkout.outputs.working-directory }}/* .
+      - name: Modify environment files
+        run: |
+          sed -i 's|\$BASE_HREF|'"$BASE_HREF"'|g' package.json
+          echo "Contents of package.json:"
+          cat package.json
+          for file in src/environments/*; do
+            sed -i 's|REST_API_URL: .*|REST_API_URL: '\'"${{ inputs.rest-api-url }}"\''|g' "$file"
+            echo "Contents of $file:"
+            cat "$file"
+          done
+      - name: NPM install
+        run: |
+          npm install
+      - name: NPM build
+        env:
+          BASE_HREF: ${{ inputs.base-url }}
+        run: |
+          npm run build:${{ inputs.env }}
+          npm pack
+      - name: Rename tarball
+        run: |
+          tgz_file=$(ls *.tgz)
+          mv "$tgz_file" application_package
+      - name: Copy repository back
+        run: |
+          rm -rf node_modules
+          cp -r . ${{ needs.checkout.outputs.working-directory }}
+      - name: Debug
+        run: |
+          ls -la ${{ needs.checkout.outputs.working-directory }}
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+  sonar:
+    name: SonarQube
+    needs:
+      - checkout
+      - install
+    runs-on: ${{ inputs.runner }}
+    container:
+      image: sonarsource/sonar-scanner-cli:10.0 # TODO: Change all images to point to harbor
+    steps:
+      - name: Copy repository
+        run: |
+          cp -r ${{ needs.checkout.outputs.working-directory }}/* .
+      - name: Extract branch name
+        shell: bash
+        id: extract_branch
+        run: |
+          echo "source_branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
+          echo "destination_branch=${GITHUB_BASE_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
+      - name: Run SonarQube
+        run: |
+          sonar-scanner \
+            -Dsonar.projectKey=${{ github.event.repository.name }} \
+            -Dsonar.projectVersion=${{ needs.install.outputs.tag }} \
+            -Dsonar.sources=. \
+            -Dsonar.branch.target=${{ steps.extract_branch.outputs.destination_branch }} \
+            -Dsonar.branch.name=${{ steps.extract_branch.outputs.destination_branch }} \
+            -Dsonar.host.url=http://sonarqube-sonarqube.sonarqube.svc.cluster.local:9000 \
+            -Dsonar.token=${{ secrets.SONARQUBE_TOKEN }}
+
+          echo "You can see the full report at https://sonarqube.permanent.sdops.com/dashboard?id=${{ github.event.repository.name }}"
+  build-image:
+    uses: ./.github/workflows/wfc-kaniko.yaml
+    needs:
+      - checkout
+      - install
+    with:
+      runner: ${{ inputs.runner }}
+      image: "${{ vars.DOCKER_REGISTRY }}/${{ github.event.repository.name }}"
+      tag: "${{ needs.install.outputs.tag }}"
+      context: "${{ needs.checkout.outputs.working-directory }}"
+      push: ${{ inputs.push }}
+      analyze: ${{ inputs.analyze }}
+    secrets: inherit

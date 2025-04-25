@@ -1,0 +1,30 @@
+---
+name: WFC - Skopeo
+
+# Controls when the workflow will run
+on:
+  workflow_call:
+    inputs:
+      runner:
+        required: true
+        type: string
+      src:
+        required: true
+        type: string
+      dst:
+        required: true
+        type: string
+
+jobs:
+  skopeo:
+    name: Skopeo
+    runs-on: arc-ai-bots
+    container:
+      image: docksdtr.indra.es/piarq-21.devo/skopeo:0.6
+    steps:
+      - name: Skopeo login
+        run: |
+          skopeo login -u ${{ secrets.DOCKER_USERNAME }} -p ${{ secrets.DOCKER_PASSWORD }} ${{ vars.DOCKER_REGISTRY }}
+      - name: Skopeo copy
+        run: |
+          skopeo copy docker://${{ inputs.src }} docker://${{ inputs.dst }}

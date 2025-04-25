@@ -1,0 +1,69 @@
+name: Maven - Create Release
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        required: true
+        type: string
+
+concurrency:
+  group: create-release
+  cancel-in-progress: false
+
+jobs:
+  get-version:
+    runs-on: ${{ inputs.runner }}
+    container:
+      # image: maven:3.8-eclipse-temurin-8-alpine
+      image: docksdtr.indra.es/piarq-21.devo/sdops-dope-tools/maven:gh-runner-pr-23-2
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: develop
+      - name: Get next version
+        id: get-version
+        run: |
+          version=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
+          echo "Current version is $version"
+          echo "version=$version" >> $GITHUB_OUTPUT
+    outputs:
+      version: ${{ steps.get-version.outputs.version }}
+  create-release:
+    runs-on: ${{ inputs.runner }}
+    container: 
+      image: docksdtr.indra.es/piarq-21.devo/gh-runner-python:3.11.6-v3
+    needs: get-version
+    steps:
+      - name: Create release
+        uses: Minsait-GA/sdops-dope-github-actions-libraries/gitflow/create-release@feature/gitflow
+        with:
+          source-branch: develop
+          version: ${{ needs.get-version.outputs.version }}
+          git-username: sdops-app
+          git-app-id: 904133
+          git-private-key: ${{ secrets.GH_PRIVATE_KEY }}
+  bump-develop-version:
+    runs-on: ${{ inputs.runner }}
+    container:
+      image: docksdtr.indra.es/piarq-21.devo/sdops-dope-tools/maven:gh-runner-pr-23-2
+    needs:
+      - get-version
+      - create-release
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: develop
+      - name: Bump develop version
+        run: |
+          mvn build-helper:parse-version versions:set -DnewVersion=\${parsedVersion.majorVersion}.\${parsedVersion.nextMinorVersion}.0 versions:commit -DprocessAllModules
+      - name: Push changes
+        uses: Minsait-GA/sdops-dope-github-actions-libraries/utils/push@feature/utils
+        with:
+          user: sdops-app
+          app-id: 904133
+          commit-changes: true
+          commit-message: "Bump minor version"
+          private-key: ${{ secrets.GH_PRIVATE_KEY }}

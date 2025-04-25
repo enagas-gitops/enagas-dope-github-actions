@@ -1,0 +1,43 @@
+name: Maven - Create Release Candidate
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        required: true
+        type: string
+
+concurrency:
+  group: release-candidate
+  cancel-in-progress: false
+
+jobs:
+  build:
+    uses: ./.github/workflows/maven-build.yaml
+    with:
+      runner: ${{ inputs.runner }}
+      version-suffix: "-RC-${{ github.run_attempt}}"
+      containerfile-path: "Dockerfile"
+      push: true
+      analyze: false
+    secrets: inherit
+  skope: # Also, upload the same image but with RC without the build number as the latest version
+    name: Push Docker
+    needs:
+      - build
+    uses: ./.github/workflows/wfc-skopeo.yaml
+    with:
+      runner: ${{ inputs.runner }}
+      src: "${{ needs.build.outputs.image }}:${{ needs.build.outputs.version }}-RC-${{ github.run_attempt}}"
+      dst: "${{ needs.build.outputs.image }}:${{ needs.build.outputs.version }}-RC"
+    secrets: inherit
+  deploy:
+    name: Deploy
+    needs:
+      - build
+    uses: ./.github/workflows/wfc-helm-config.yaml
+    with:
+      runner: ${{ inputs.runner }}
+      environment: pre
+      version: ${{ needs.build.outputs.tag }}
+    secrets: inherit

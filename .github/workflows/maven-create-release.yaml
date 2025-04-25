@@ -1,0 +1,52 @@
+name: Maven - Create Release
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        required: true
+        type: string
+
+concurrency:
+  group: main
+  cancel-in-progress: false
+
+jobs:
+  load-project:
+    name: Load Project
+    runs-on: ${{ inputs.runner }}
+    container:
+      image: maven:3.8-eclipse-temurin-8-alpine
+    steps:
+      - name: Checkout
+        id: checkout
+        uses: Minsait-GA/sdops-dope-github-actions-libraries/utils/checkout@feature/utils
+      - name: Get app version
+        id: version
+        run: |
+          version="$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)"
+          echo "Current version is $version"
+          echo "version=$version" >> $GITHUB_OUTPUT
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      working-directory: ${{ steps.checkout.outputs.working-directory }}
+  skopeo-image:
+    name: Build Docker
+    needs: load-project
+    uses: ./.github/workflows/wfc-skopeo.yaml
+    with:
+      runner: ${{ inputs.runner }}
+      src: "${{ vars.DOCKER_REGISTRY }}/${{ github.event.repository.name }}:${{ needs.load-project.outputs.version }}-RC"
+      dst: "${{ vars.DOCKER_REGISTRY }}/${{ github.event.repository.name }}:${{ needs.load-project.outputs.version }}"
+    secrets: inherit
+  deploy:
+    name: Deploy
+    needs:
+      - load-project
+      - skopeo-image
+    uses: ./.github/workflows/wfc-helm-config.yaml
+    with:
+      runner: ${{ inputs.runner }}
+      environment: pro
+      version: ${{ needs.load-project.outputs.version }}
+    secrets: inherit

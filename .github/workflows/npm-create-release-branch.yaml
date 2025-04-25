@@ -1,0 +1,90 @@
+name: NPM - Create Release
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        required: true
+        type: string
+
+concurrency:
+  group: create-release
+  cancel-in-progress: false
+
+jobs:
+  get-version:
+    runs-on: ${{ inputs.runner }}
+    container:
+      # image: maven:3.8-eclipse-temurin-8-alpine
+      image: docksdtr.indra.es/piarq-21.devo/sdops-dope-tools/maven:gh-runner-pr-23-2
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: develop
+      - name: Get app version
+        id: version
+        run: |
+          version=$(cat package.json \
+            | grep version \
+            | head -1 \
+            | awk -F: '{ print $2 }' \
+            | sed 's/[",]//g')
+          version=$(echo $version | xargs) # remove leading and trailing whitespaces
+          echo "Current version is $version"
+          echo "version=$version" >> $GITHUB_OUTPUT
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+  create-release:
+    runs-on: ${{ inputs.runner }}
+    container: 
+      image: docksdtr.indra.es/piarq-21.devo/gh-runner-python:3.11.6-v3
+    needs: get-version
+    steps:
+      - name: Create release
+        uses: Minsait-GA/sdops-dope-github-actions-libraries/gitflow/create-release@feature/gitflow
+        with:
+          source-branch: develop
+          version: ${{ needs.get-version.outputs.version }}
+          git-username: sdops-app
+          git-app-id: 904133
+          git-private-key: ${{ secrets.GH_PRIVATE_KEY }}
+  bump-develop-version:
+    runs-on: ${{ inputs.runner }}
+    container:
+      image: docksdtr.indra.es/piarq-21.devo/sdops-dope-tools/maven:gh-runner-pr-23-2
+    needs:
+      - get-version
+      - create-release
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: develop
+      - name: Get app version
+        id: version
+        run: |
+          version=$(cat package.json \
+            | grep version \
+            | head -1 \
+            | awk -F: '{ print $2 }' \
+            | sed 's/[",]//g')
+          version=$(echo $version | xargs) # remove leading and trailing whitespaces
+          next_version=$(echo $version | awk -F. '{print $1"."$2+1".0"}')
+          echo "version=$version" >> $GITHUB_OUTPUT
+          echo "next_version=$next_version" >> $GITHUB_OUTPUT
+      - name: Bump version
+        run: |
+          version=${{ steps.version.outputs.version }}
+          next_version=${{ steps.version.outputs.next_version }}
+          echo "Bumping version from $version to $next_version"
+          # sed -i "s/\"version\": \"$version\"/\"version\": \"$next_version\"/" package.json
+          sed -i "0,/\"version\": \"$version\"/s//\"version\": \"$next_version\"/" package.json
+      - name: Push changes
+        uses: Minsait-GA/sdops-dope-github-actions-libraries/utils/push@feature/utils
+        with:
+          user: sdops-app
+          app-id: 904133
+          commit-changes: true
+          commit-message: "Bump minor version"
+          private-key: ${{ secrets.GH_PRIVATE_KEY }}

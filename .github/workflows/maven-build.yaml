@@ -1,0 +1,129 @@
+---
+name: Maven - Build
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        required: true
+        type: string
+      version-suffix:
+        required: false
+        type: string
+        default: ""
+      containerfile-path:
+        required: false
+        type: string
+        default: "Dockerfile"
+      ref:
+        required: false
+        type: string
+      push:
+        description: 'Whether to push the built image to a registry'
+        required: false
+        type: boolean
+        default: true
+      analyze:
+        description: 'Whether to analyze the built image with Trivy'
+        required: false
+        type: boolean
+        default: true
+      jobs-path:
+        required: false
+        type: string
+        default: "/var/jobs"
+    outputs:
+      version:
+        value: ${{ jobs.package.outputs.mvnVersion }}
+      image:
+        value: "${{ vars.DOCKER_REGISTRY }}/${{ github.event.repository.name }}"
+      tag:
+        value: ${{ jobs.package.outputs.version }}
+
+jobs:
+  checkout:
+    runs-on: ${{ inputs.runner }}
+    container:
+      image: maven:3.8-eclipse-temurin-8-alpine
+    steps:
+      - name: Checkout
+        id: checkout
+        uses: Minsait-GA/sdops-dope-github-actions-libraries/utils/checkout@feature/utils
+        with:
+          ref: ${{ inputs.ref }}
+    outputs:
+      working-directory: ${{ steps.checkout.outputs.working-directory }}
+  package:
+    runs-on: ${{ inputs.runner }}
+    needs: checkout
+    container:
+      image: maven:3.8-eclipse-temurin-8-alpine
+    steps:
+      - name: Copy repository
+        run: |
+          cp -r ${{ needs.checkout.outputs.working-directory }}/* .
+      - name: Get app version
+        id: version
+        run: |
+          mvnVersion="$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)"
+          version="${mvnVersion}${{ inputs.version-suffix }}"
+          echo "Current version is $version"
+          echo "mvnVersion=$mvnVersion" >> $GITHUB_OUTPUT
+          echo "version=$version" >> $GITHUB_OUTPUT
+      - name: Make package
+        run: |
+          mvn clean package -DskipTests -Ddependency-check.skip=true
+      - name: Test
+        run: |
+          mvn test
+      - name: Copy repository back
+        run: |
+          rm -rf node_modules
+          cp -r . ${{ needs.checkout.outputs.working-directory }}
+    outputs:
+      mvnVersion: ${{ steps.version.outputs.mvnVersion }}
+      version: ${{ steps.version.outputs.version }}
+  sonar:
+    name: SonarQube
+    needs:
+      - checkout
+      - package
+    runs-on: ${{ inputs.runner }}
+    container:
+      image: sonarsource/sonar-scanner-cli:10.0 # TODO: Change all images to point to harbor
+    steps:
+      - name: Copy repository
+        run: |
+          cp -r ${{ needs.checkout.outputs.working-directory }}/* .
+      - name: Extract branch name
+        shell: bash
+        id: extract_branch
+        run: |
+          echo "source_branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
+          echo "destination_branch=${GITHUB_BASE_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
+      - name: Run SonarQube
+        run: |
+          sonar-scanner \
+            -Dsonar.projectKey=${{ github.event.repository.name }} \
+            -Dsonar.projectVersion=${{ needs.package.outputs.version }} \
+            -Dsonar.sources=. \
+            -Dsonar.branch.target=${{ steps.extract_branch.outputs.destination_branch }} \
+            -Dsonar.branch.name=${{ steps.extract_branch.outputs.destination_branch }} \
+            -Dsonar.host.url=http://sonarqube-sonarqube.sonarqube.svc.cluster.local:9000 \
+            -Dsonar.token=${{ secrets.SONARQUBE_TOKEN }} \
+            -Dsonar.java.binaries=target/classes/ -Dsonar.java.libraries=target/classes/
+
+          echo "You can see the full report at https://sonarqube.permanent.sdops.com/dashboard?id=${{ github.event.repository.name }}"
+  build-image:
+    uses: ./.github/workflows/wfc-kaniko.yaml
+    needs:
+      - checkout
+      - package
+    with:
+      runner: ${{ inputs.runner }}
+      image: "${{ vars.DOCKER_REGISTRY }}/${{ github.event.repository.name }}"
+      tag: "${{ needs.package.outputs.version }}"
+      context: "${{ needs.checkout.outputs.working-directory }}"
+      push: ${{ inputs.push }}
+      analyze: ${{ inputs.analyze }}
+    secrets: inherit

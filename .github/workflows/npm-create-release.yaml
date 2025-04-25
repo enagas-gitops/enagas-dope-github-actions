@@ -1,0 +1,35 @@
+name: NPM - Create Release
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        required: true
+        type: string
+
+concurrency:
+  group: main
+  cancel-in-progress: false
+
+jobs:
+  build:
+    uses: ./.github/workflows/npm-build.yaml
+    with:
+      runner: ${{ inputs.runner }}
+      env: prod
+      base-url: ${{ vars.BASE_URL_PROD }}
+      rest-api-url: ${{ vars.REST_API_URL_PROD }}
+      containerfile-path: "Dockerfile"
+      push: true
+      analyze: false
+    secrets: inherit
+  deploy:
+    name: Deploy
+    needs:
+      - build
+    uses: ./.github/workflows/wfc-helm-config.yaml
+    with:
+      runner: ${{ inputs.runner }}
+      environment: pro
+      version: ${{ needs.build.outputs.tag }}
+    secrets: inherit

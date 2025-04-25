@@ -1,0 +1,63 @@
+name: WFC - Hadolint
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        required: true
+        type: string
+      containerfile-path:
+        required: false
+        type: string
+        default: "Containerfile"
+      comment-append:
+        required: false
+        type: boolean
+        default: false
+      comment-recreate:
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: hadolint
+
+jobs:
+  lint:
+    runs-on: ${{ inputs.runner }}
+    container:
+      image: ghcr.io/hadolint/hadolint:2.12.0-alpine
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Lint Containerfile
+        continue-on-error: true
+        id: hadolint
+        run: |
+          hadolint ${{ inputs.containerfile-path }} | tee /tmp/hadolint.log
+      - name: Clean report
+        run: |
+          sed -i -E 's/\x1B\[[0-9;]*[mGK]//g' /tmp/hadolint.log
+      - name: Create lint report
+        run: |
+          cat <<EOF >> /tmp/hadolint-report.md
+          ## :zap: Hadolint report
+          \`\`\`
+          $(cat /tmp/hadolint.log)
+          \`\`\`
+
+          EOF
+
+          echo 'HADOLINT_REPORT<<EOF' >> $GITHUB_ENV
+          cat /tmp/hadolint-report.md >> $GITHUB_ENV
+          echo 'EOF' >> $GITHUB_ENV
+      - name: Add lint report
+        uses: hasura/comment-progress@v2.3.0
+        with:
+          id: hadolint-report
+          message: ${{ env.HADOLINT_REPORT }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          number: ${{ github.event.number }}
+          append: ${{ inputs.comment-append }}
+          recreate: ${{ inputs.comment-recreate }}

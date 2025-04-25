@@ -1,0 +1,110 @@
+---
+name: WFC - Kaniko
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        required: true
+        type: string
+      image:
+        required: true
+        type: string
+      tag:
+        required: true
+        type: string
+      context:
+        required: true
+        type: string
+      containerfile-path:
+        required: false
+        type: string
+        default: "Dockerfile"
+      push:
+        description: 'Whether to push the built image to a registry'
+        required: false
+        type: boolean
+        default: true
+      analyze:
+        description: 'Whether to analyze the built image with Trivy'
+        required: false
+        type: boolean
+        default: false
+      jobs-path:
+        required: false
+        type: string
+        default: "/var/jobs"
+
+jobs:
+  kaniko:
+    runs-on: ${{ inputs.runner }}
+    container:
+      # TODO: Use a newer version of Kaniko in order to use the --tar-path flag
+      # image: gcr.io/kaniko-project/executor:v1.23.2
+      image: docksdtr.indra.es/piarq-21.devo/kaniko:0.5
+    steps:
+      - name: Configure credentials
+        run: |
+          docker_auth=$(echo -n "${{ secrets.DOCKER_USERNAME }}:${{ secrets.DOCKER_PASSWORD }}" | base64 | tr -d "\n")
+          echo "{\"auths\":{\"${{ vars.DOCKER_REGISTRY }}\":{\"auth\":\"$docker_auth\"}}}" > /kaniko/.docker/config.json
+      - name: Set extra args
+        id: extra-args
+        run: |
+          extra_args=""
+          if [ "${{ inputs.push }}" = "false" ]; then
+            extra_args="--no-push"
+          fi
+          if [ "${{ inputs.analyze }}" = "true" ]; then
+            export imageTarPath="${{ inputs.jobs-path }}/${{ github.repository }}-podman/$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 20 | head -n 1).tar"
+            echo "imageTarPath=$imageTarPath" >> $GITHUB_OUTPUT
+            extra_args="$extra_args --tar-path $imageTarPath"
+          fi
+          echo "extra_args=$extra_args" >> $GITHUB_OUTPUT
+      - name: Build image
+        id: kaniko
+        run: |
+          image="${{ inputs.image }}"
+          tag="${{ inputs.tag }}"
+          destination="$image:$tag"
+          /kaniko/executor --context "${{ inputs.context }}" --dockerfile "${{ inputs.containerfile-path }}" --destination $destination ${{ steps.extra-args.outputs.extra_args }}
+    outputs:
+      tarPath: ${{ steps.kaniko.outputs.tarPath }}
+  dependency-track:
+    runs-on: ${{ inputs.runner }}
+    if: ${{ inputs.analyze }}
+    needs:
+      - kaniko
+    container:
+      image: docksdtr.indra.es/piarq-21.devo/trivy:dtrackauditor-debian-12-slim-trivy-0.55.2-dtrack-auditor-1.3.0--0.5
+    steps:
+      - name: Dependency Track analysis
+        id: analysis
+        uses: Minsait-GA/sdops-dope-github-actions-libraries/dependency-track/trivy@feature/actions-podman
+        with:
+          dependencyTrackUrl: ${{ vars.DEPENDENCY_TRACK_URL }}
+          dependencyTrackApiKey: ${{ secrets.DEPENDENCY_TRACK_API_KEY }}
+          imageTarPath: "${{ needs.kaniko.outputs.tarPath }}"
+          project: ${{ inputs.image }}
+          version: ${{ inputs.tag }}
+          parentProject: sdops-dope-tools-containerfiles
+          parentVersion: v1
+      - name: Print vulnerabilities
+        run: |
+          echo "Vulnerabilities found:"
+          echo "Critical: ${{ steps.analysis.outputs.criticals }}"
+          echo "High: ${{ steps.analysis.outputs.high }}"
+          echo "Medium: ${{ steps.analysis.outputs.medium }}"
+          echo "Low: ${{ steps.analysis.outputs.low }}"
+          echo "Unassigned: ${{ steps.analysis.outputs.unassigned }}"
+  cleanup:
+    runs-on: ${{ inputs.runner }}
+    container:
+      image: maven:3.8-eclipse-temurin-8-alpine
+    needs:
+      - kaniko
+      - dependency-track
+    if: always()
+    steps:
+      - name: Cleanup
+        run: |
+          rm -f ${{ needs.kaniko.outputs.tarPath }}
