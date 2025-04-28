@@ -48,7 +48,7 @@ jobs:
     steps:
       - name: Checkout
         id: checkout
-        uses: Minsait-GA/sdops-dope-github-actions-libraries/utils/checkout@feature/utils
+        uses: enagas-gitops/enagas-dope-github-actions-libraries/utils/checkout@feature/utils
         with:
           ref: ${{ inputs.ref }}
     outputs:
