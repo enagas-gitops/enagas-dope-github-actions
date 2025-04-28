@@ -37,7 +37,7 @@ jobs:
     needs: get-version
     steps:
       - name: Create release
-        uses: enagas-gitops/enagas-dope-github-actions-libraries/gitflow/create-release@feature/gitflow
+        uses: enagas-gitops/enagas-dope-github-actions-libraries/gitflow/create-release@main
         with:
           source-branch: develop
           version: ${{ needs.get-version.outputs.version }}
@@ -60,7 +60,7 @@ jobs:
         run: |
           mvn build-helper:parse-version versions:set -DnewVersion=\${parsedVersion.majorVersion}.\${parsedVersion.nextMinorVersion}.0 versions:commit -DprocessAllModules
       - name: Push changes
-        uses: enagas-gitops/enagas-dope-github-actions-libraries/utils/push@feature/utils
+        uses: enagas-gitops/enagas-dope-github-actions-libraries/utils/push@main
         with:
           user: sdops-app
           app-id: 904133

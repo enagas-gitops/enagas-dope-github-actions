@@ -29,7 +29,7 @@ jobs:
         run: |
           mvn build-helper:parse-version versions:set -DnewVersion=\${parsedVersion.majorVersion}.\${parsedVersion.minorVersion}.\${parsedVersion.nextIncrementalVersion} versions:commit -DprocessAllModules
       - name: Push changes
-        uses: enagas-gitops/enagas-dope-github-actions-libraries/utils/push@feature/utils
+        uses: enagas-gitops/enagas-dope-github-actions-libraries/utils/push@main
         with:
           user: sdops-app
           app-id: 904133

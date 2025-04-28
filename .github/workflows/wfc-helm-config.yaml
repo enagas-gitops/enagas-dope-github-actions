@@ -45,7 +45,7 @@ jobs:
           token: ${{ steps.app-token.outputs.token }}
           ref: ${{ vars.CONFIG_BRANCH }}
       - name: Change image tag
-        uses: enagas-gitops/enagas-dope-github-actions-libraries/utils/helm-config@feature/utils
+        uses: enagas-gitops/enagas-dope-github-actions-libraries/utils/helm-config@main
         with:
           values-file: helm/values-${{ inputs.environment }}.yaml
           key: image.tag

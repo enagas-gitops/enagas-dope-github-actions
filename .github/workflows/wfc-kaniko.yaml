@@ -79,7 +79,7 @@ jobs:
     steps:
       - name: Dependency Track analysis
         id: analysis
-        uses: enagas-gitops/enagas-dope-github-actions-libraries/dependency-track/trivy@feature/actions-podman
+        uses: enagas-gitops/enagas-dope-github-actions-libraries/dependency-track/trivy@main
         with:
           dependencyTrackUrl: ${{ vars.DEPENDENCY_TRACK_URL }}
           dependencyTrackApiKey: ${{ secrets.DEPENDENCY_TRACK_API_KEY }}
