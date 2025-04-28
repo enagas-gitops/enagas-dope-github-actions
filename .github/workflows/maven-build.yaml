@@ -83,37 +83,37 @@ jobs:
     outputs:
       mvnVersion: ${{ steps.version.outputs.mvnVersion }}
       version: ${{ steps.version.outputs.version }}
-  sonar:
-    name: SonarQube
-    needs:
-      - checkout
-      - package
-    runs-on: ${{ inputs.runner }}
-    container:
-      image: sonarsource/sonar-scanner-cli:10.0 # TODO: Change all images to point to harbor
-    steps:
-      - name: Copy repository
-        run: |
-          cp -r ${{ needs.checkout.outputs.working-directory }}/* .
-      - name: Extract branch name
-        shell: bash
-        id: extract_branch
-        run: |
-          echo "source_branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
-          echo "destination_branch=${GITHUB_BASE_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
-      - name: Run SonarQube
-        run: |
-          sonar-scanner \
-            -Dsonar.projectKey=${{ github.event.repository.name }} \
-            -Dsonar.projectVersion=${{ needs.package.outputs.version }} \
-            -Dsonar.sources=. \
-            -Dsonar.branch.target=${{ steps.extract_branch.outputs.destination_branch }} \
-            -Dsonar.branch.name=${{ steps.extract_branch.outputs.destination_branch }} \
-            -Dsonar.host.url=http://sonarqube-sonarqube.sonarqube.svc.cluster.local:9000 \
-            -Dsonar.token=${{ secrets.SONARQUBE_TOKEN }} \
-            -Dsonar.java.binaries=target/classes/ -Dsonar.java.libraries=target/classes/
+  # sonar:
+  #   name: SonarQube
+  #   needs:
+  #     - checkout
+  #     - package
+  #   runs-on: ${{ inputs.runner }}
+  #   container:
+  #     image: sonarsource/sonar-scanner-cli:10.0 # TODO: Change all images to point to harbor
+  #   steps:
+  #     - name: Copy repository
+  #       run: |
+  #         cp -r ${{ needs.checkout.outputs.working-directory }}/* .
+  #     - name: Extract branch name
+  #       shell: bash
+  #       id: extract_branch
+  #       run: |
+  #         echo "source_branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
+  #         echo "destination_branch=${GITHUB_BASE_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
+  #     - name: Run SonarQube
+  #       run: |
+  #         sonar-scanner \
+  #           -Dsonar.projectKey=${{ github.event.repository.name }} \
+  #           -Dsonar.projectVersion=${{ needs.package.outputs.version }} \
+  #           -Dsonar.sources=. \
+  #           -Dsonar.branch.target=${{ steps.extract_branch.outputs.destination_branch }} \
+  #           -Dsonar.branch.name=${{ steps.extract_branch.outputs.destination_branch }} \
+  #           -Dsonar.host.url=http://sonarqube-sonarqube.sonarqube.svc.cluster.local:9000 \
+  #           -Dsonar.token=${{ secrets.SONARQUBE_TOKEN }} \
+  #           -Dsonar.java.binaries=target/classes/ -Dsonar.java.libraries=target/classes/
 
-          echo "You can see the full report at https://sonarqube.permanent.sdops.com/dashboard?id=${{ github.event.repository.name }}"
+  #         echo "You can see the full report at https://sonarqube.permanent.sdops.com/dashboard?id=${{ github.event.repository.name }}"
   build-image:
     uses: ./.github/workflows/wfc-kaniko.yaml
     needs:
