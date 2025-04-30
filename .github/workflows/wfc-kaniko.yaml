@@ -75,7 +75,7 @@ jobs:
     needs:
       - kaniko
     container:
-      image: docksdtr.indra.es/piarq-21.devo/trivy:dtrackauditor-debian-12-slim-trivy-0.55.2-dtrack-auditor-1.3.0--0.5
+      image: quay.apps.ocpolmpre.enagas.eng/github.actions/trivy:dtrackauditor-debian-12-slim-trivy-0.55.2-dtrack-auditor-1.3.0--0.5
     steps:
       - name: Dependency Track analysis
         id: analysis
@@ -99,7 +99,7 @@ jobs:
   cleanup:
     runs-on: ${{ inputs.runner }}
     container:
-      image: maven:3.8-eclipse-temurin-8-alpine
+      image: quay.apps.ocpolmpre.enagas.eng/github.actions/maven:3.8-eclipse-temurin-8-alpine
     needs:
       - kaniko
       - dependency-track
