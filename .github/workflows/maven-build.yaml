@@ -65,7 +65,6 @@ jobs:
       - name: Get app version
         id: version
         run: |
-          sleep 3600
           mvnVersion="$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)"
           version="${mvnVersion}${{ inputs.version-suffix }}"
           echo "Current version is $version"
