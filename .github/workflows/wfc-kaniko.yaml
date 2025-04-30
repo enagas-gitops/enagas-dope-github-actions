@@ -41,7 +41,7 @@ jobs:
     container:
       # TODO: Use a newer version of Kaniko in order to use the --tar-path flag
       # image: gcr.io/kaniko-project/executor:v1.23.2
-      image: docksdtr.indra.es/piarq-21.devo/kaniko:0.5
+      image: quay.apps.ocpolmpre.enagas.eng/github.actions/kaniko:0.5
     steps:
       - name: Configure credentials
         run: |

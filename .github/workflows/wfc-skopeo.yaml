@@ -20,7 +20,7 @@ jobs:
     name: Skopeo
     runs-on: arc-ai-bots
     container:
-      image: docksdtr.indra.es/piarq-21.devo/skopeo:0.6
+      image: quay.apps.ocpolmpre.enagas.eng/github.actions/skopeo:0.6
     steps:
       - name: Skopeo login
         run: |
